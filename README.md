@@ -2,6 +2,27 @@
 
 基于 CellPose + CPSAM 的肾小管自动分割与近端/远端分类。
 
+## 快速开始
+
+```bash
+# 1. 下载代码
+git clone https://github.com/MEIPork1/kidney_tubule_seg.git
+cd kidney_tubule_seg
+
+# 2. 下载模型权重（从 Hugging Face）
+pip install huggingface_hub
+hf download MEIPork/kidney-tubule-cpsam --local-dir models/
+
+# 3. 推理
+python predict_tubule.py \
+    --img_dir data/test_images \
+    --seg_model models/cpsam_v2_fold3/best_model \
+    --cls_model models/classifier/cnn_classifier_fold0.pth \
+    --out_dir results/output
+```
+
+> 国内网络：`export HF_ENDPOINT=https://hf-mirror.com` 使用镜像下载
+
 ## 功能
 
 1. **肾小管分割** — CPSAM (SAM ViT-L) 微调，5-fold CV IoU 0.844

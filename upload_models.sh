@@ -1,5 +1,5 @@
 #!/bin/bash
-# 在服务器上运行：上传模型权重到 Hugging Face
+# 上传模型权重到 Hugging Face（通过国内镜像 hf-mirror.com）
 # 用法: HF_TOKEN="hf_xxx" bash upload_models.sh
 set -e
 
@@ -13,30 +13,33 @@ fi
 MODEL_DIR="/root/kidney/models"
 HF_REPO="MEIPork/kidney-tubule-cpsam"
 
-echo "===== 1. 安装 huggingface_hub ====="
-pip install huggingface_hub -q
+echo "===== 上传模型到 Hugging Face (via hf-mirror.com) ====="
 
-echo "===== 2. 登录 Hugging Face ====="
-hf auth login --token "$HF_TOKEN"
+/root/miniconda3/envs/cellpose/bin/python -c "
+import os
+os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
+from huggingface_hub import HfApi, login
+login(token='${HF_TOKEN}')
+api = HfApi(endpoint='https://hf-mirror.com')
 
-echo "===== 3. 上传模型权重 ====="
-for FOLD in 0 1 2 3 4; do
-    SRC="${MODEL_DIR}/cpsam_v2_fold${FOLD}/best_model"
-    DST="cpsam_v2_fold${FOLD}/best_model"
-    if [ -f "$SRC" ]; then
-        SIZE=$(du -h "$SRC" | cut -f1)
-        echo "  上传 fold${FOLD} (${SIZE})..."
-        hf upload "$HF_REPO" "$SRC" "$DST" --commit-message "Add fold${FOLD} CPSAM model"
-    else
-        echo "  跳过 fold${FOLD}: 文件不存在"
-    fi
-done
+# 上传 CPSAM 最佳模型 (fold 3)
+api.upload_file(
+    path_or_fileobj='${MODEL_DIR}/cpsam_v2_fold3/best_model',
+    path_in_repo='cpsam_v2_fold3/best_model',
+    repo_id='${HF_REPO}',
+    commit_message='Add best CPSAM model (fold 3, IoU=0.858, AP=0.871)'
+)
 
-CLS_SRC="${MODEL_DIR}/classifier/cnn_classifier_fold0.pth"
-if [ -f "$CLS_SRC" ]; then
-    echo "  上传 classifier..."
-    hf upload "$HF_REPO" "$CLS_SRC" "classifier/cnn_classifier_fold0.pth" --commit-message "Add CNN classifier"
-fi
+# 上传 CNN 分类器
+api.upload_file(
+    path_or_fileobj='${MODEL_DIR}/classifier/cnn_classifier_fold0.pth',
+    path_in_repo='classifier/cnn_classifier_fold0.pth',
+    repo_id='${HF_REPO}',
+    commit_message='Add CNN classifier (ResNet18)'
+)
+
+print('All done!')
+"
 
 echo ""
 echo "===== 完成！====="

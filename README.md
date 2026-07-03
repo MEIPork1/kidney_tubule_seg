@@ -11,48 +11,41 @@
 
 ## 性能
 
-| 指标 | 值 |
-|------|------|
-| 5-fold CV IoU | 0.844 |
-| 5-fold CV Dice | 0.914 |
-| 5-fold CV AP@0.5 | 0.845 ± 0.017 |
-| 最佳单图 AP@0.5 | 0.964 (Captured 32) |
+5-fold CV 平均（46 张 H&E 图像）：
+
+| 指标 | 均值 | 最佳 Fold (fold 3) |
+|------|------|------|
+| IoU | 0.844 | **0.858** |
+| Dice | 0.914 | **0.923** |
+| mIoU | 0.678 | **0.708** |
+| AP@0.5 | 0.845 ± 0.017 | **0.871** |
+
+最佳单图 AP@0.5: **0.964** (Captured 32, fold 0)
 
 ## 环境要求
 
 ```bash
 conda create -n cellpose python=3.10
 conda activate cellpose
-pip install cellpose==4.2.1 torch==2.5.1 opencv-python numpy
+pip install cellpose==4.2.1 torch opencv-python numpy huggingface_hub
 ```
 
-GPU 推理推荐 NVIDIA GPU (≥8GB VRAM)，CPU 也可运行但较慢。
+GPU 推理推荐 NVIDIA GPU (≥8GB VRAM)。CPU 可用但较慢，建议将图片 resize 到 512px。
 
 ## 模型权重
 
 从 Hugging Face 下载：[MEIPork/kidney-tubule-cpsam](https://huggingface.co/MEIPork/kidney-tubule-cpsam)
 
 ```bash
-# 安装 huggingface_hub
-pip install huggingface_hub
-
-# 下载全部模型
 hf download MEIPork/kidney-tubule-cpsam --local-dir models/
 ```
 
-或直接浏览器下载单个文件：https://huggingface.co/MEIPork/kidney-tubule-cpsam
-
-模型文件：
+模型文件（2 个文件）：
 
 ```
 models/
-├── cpsam_v2_fold0/best_model      # 分割模型 fold 0
-├── cpsam_v2_fold1/best_model      # 分割模型 fold 1
-├── cpsam_v2_fold2/best_model      # 分割模型 fold 2
-├── cpsam_v2_fold3/best_model      # 分割模型 fold 3
-├── cpsam_v2_fold4/best_model      # 分割模型 fold 4
-└── classifier/
-    └── cnn_classifier_fold0.pth   # 近端/远端分类器
+├── cpsam_v2_fold3/best_model             # CPSAM 分割模型 (最佳 fold, IoU 0.858)
+└── classifier/cnn_classifier_fold0.pth   # ResNet18 近端/远端分类器
 ```
 
 ## 数据准备
@@ -64,8 +57,6 @@ data/
 └── raw/
     ├── image_001.jpg
     ├── image_001.geojson
-    ├── image_002.jpg
-    ├── image_002.geojson
     └── ...
 ```
 
@@ -79,9 +70,39 @@ python prepare_multiclass_data.py \
     --n_folds 5
 ```
 
+## 推理
+
+全 Pipeline（分割 + 分类 + 可视化）：
+
+```bash
+python predict_tubule.py \
+    --img_dir data/test_images \
+    --seg_model models/cpsam_v2_fold3/best_model \
+    --cls_model models/classifier/cnn_classifier_fold0.pth \
+    --out_dir results/output \
+    --flow_threshold 0.3 \
+    --cellprob_threshold -0.5
+```
+
+### 输出文件
+
+每张输入图生成：
+
+| 文件 | 内容 |
+|------|------|
+| `*_classified.png` | 分割+分类叠加图 (红=近端, 蓝=远端) |
+| `*_analysis.csv` | 每实例: class, confidence, area_pixels, area_um2, bbox |
+| `summary.json` | 该批次汇总统计 |
+
+CSV 字段：
+
+```csv
+instance_id,class,class_id,confidence,area_pixels,area_um2,bbox_x,bbox_y,bbox_w,bbox_h
+```
+
 ## 训练
 
-### 1. 分割模型（5-fold CV）
+### 分割模型（5-fold CV）
 
 ```bash
 for FOLD in 0 1 2 3 4; do
@@ -95,7 +116,9 @@ for FOLD in 0 1 2 3 4; do
 done
 ```
 
-### 2. 分类器
+Fold 3 表现最好（IoU 0.858, AP@0.5 0.871），发布模型为 fold 3。
+
+### 分类器
 
 ```bash
 python classify_cnn.py \
@@ -104,7 +127,7 @@ python classify_cnn.py \
     --model_path models/classifier/cnn_classifier_fold0.pth
 ```
 
-### 3. 动态参数调优
+### 动态参数调优
 
 ```bash
 python tune_dynamics.py \
@@ -114,59 +137,27 @@ python tune_dynamics.py \
 
 推荐参数：`flow_threshold=0.3`, `cellprob_threshold=-0.5`
 
-## 推理
-
-### 全 Pipeline（分割 + 分类）
-
-```bash
-python predict_tubule.py \
-    --img_dir data/test_images \
-    --seg_model models/cpsam_v2_fold0/best_model \
-    --cls_model models/classifier/cnn_classifier_fold0.pth \
-    --out_dir results/output \
-    --flow_threshold 0.3 \
-    --cellprob_threshold -0.5
-```
-
-### 5-fold 一键评估
-
-```bash
-bash run_folds.sh
-```
-
-### 输出文件
-
-每张输入图生成：
-
-| 文件 | 内容 |
-|------|------|
-| `*_classified.png` | 分割+分类叠加图 (红=近端, 蓝=远端) |
-| `*_analysis.csv` | 每实例: class, confidence, area_pixels, area_um2, bbox |
-| `summary.json` | 该 fold 汇总统计 |
-
-CSV 字段：
-
-```csv
-instance_id,class,class_id,confidence,area_pixels,area_um2,bbox_x,bbox_y,bbox_w,bbox_h
-```
-
 ## 目录结构
 
 ```
 kidney_tubule_seg/
 ├── README.md
-├── prepare_multiclass_data.py   # GeoJSON → 掩码 + 数据划分
-├── train_tubule.py              # 分割模型训练
-├── classify_cnn.py              # CNN 分类器训练
-├── classify_tubules.py          # 分类器推理接口
-├── predict_tubule.py            # 主推理脚本 (分割+分类+可视化)
-├── eval_ensemble.py             # 5-fold CV 评估
-├── tune_dynamics.py             # flow/cellprob 参数调优
-├── tune_dynamics_fast.py        # 快速参数扫描
-├── postprocess_masks.py         # 掩码后处理
-├── prepare_tubule_data.py       # 备选数据准备
-├── run_folds.sh                 # 一键 5-fold Pipeline
-└── run_full_pipeline.sh         # 完整 Pipeline (含 ensemble)
+├── predict_tubule.py              # 主推理脚本 (分割+分类+可视化)
+├── eval_ensemble.py               # 5-fold CV 评估
+├── prepare_multiclass_data.py     # GeoJSON → 掩码 + 数据划分
+├── classify_cnn.py                # CNN 分类器训练
+├── classify_tubules.py            # 分类器推理接口
+├── train_tubule.py                # 分割模型训练
+├── train_improved.py              # 改进版训练 (AMP)
+├── train_v2.py                    # 简洁版训练
+├── tune_dynamics.py               # flow/cellprob 参数调优
+├── tune_dynamics_fast.py          # 快速参数扫描
+├── postprocess_masks.py           # 掩码后处理
+├── prepare_tubule_data.py         # 备选数据准备
+├── eval_classifier_quick.py       # 分类器快速评估
+├── run_folds.sh                   # 一键 5-fold Pipeline
+├── run_full_pipeline.sh           # 完整 Pipeline (含 ensemble)
+└── upload_models.sh               # 上传模型到 HF
 ```
 
 ## 常见问题

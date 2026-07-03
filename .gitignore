@@ -1,0 +1,27 @@
+# Data & results
+data/
+results/
+*.jpg
+*.png
+*.csv
+*.json
+!*.geojson
+
+# Models (use Git LFS or Releases)
+models/
+*.pth
+!*.pt
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,58 +1,38 @@
 #!/bin/bash
-# 在服务器上运行：上传模型权重到 GitHub (Git LFS)
-# 用法: bash upload_models.sh
+# 在服务器上运行：上传模型权重到 Hugging Face
+# 用法:
+#   export HF_TOKEN="hf_xxx"
+#   bash upload_models.sh
 set -e
 
-# 先在终端执行: export GITHUB_TOKEN="你的token"
-# 或者直接运行: GITHUB_TOKEN="ghp_xxx" bash upload_models.sh
-if [ -z "$GITHUB_TOKEN" ]; then
-    echo "错误: 请设置 GITHUB_TOKEN 环境变量"
-    echo "用法: GITHUB_TOKEN='ghp_xxx' bash upload_models.sh"
+if [ -z "$HF_TOKEN" ]; then
+    echo "错误: 请设置 HF_TOKEN 环境变量"
+    echo "用法: HF_TOKEN='hf_xxx' bash upload_models.sh"
+    echo "获取 token: https://huggingface.co/settings/tokens"
     exit 1
 fi
-REPO_URL="https://MEIPork1:${GITHUB_TOKEN}@github.com/MEIPork1/kidney_tubule_seg.git"
+
 MODEL_DIR="/root/kidney/models"
-TMP_DIR="/tmp/kidney_models_upload"
+HF_REPO="MEIPork/kidney-tubule-cpsam"
 
-echo "===== 1. 安装 git-lfs ====="
-which git-lfs || (apt-get update && apt-get install -y git-lfs)
-git lfs install
+echo "===== 1. 安装 huggingface_hub ====="
+pip install huggingface_hub -q
 
-echo "===== 2. 克隆仓库 ====="
-rm -rf "$TMP_DIR"
-git clone "$REPO_URL" "$TMP_DIR"
-cd "$TMP_DIR"
+echo "===== 2. 登录 Hugging Face ====="
+hf auth login --token "$HF_TOKEN"
 
-echo "===== 3. 复制模型权重 ====="
-mkdir -p models/classifier
-for FOLD in 0 1 2 3 4; do
-    SRC="${MODEL_DIR}/cpsam_v2_fold${FOLD}/best_model"
-    DST="models/cpsam_v2_fold${FOLD}/best_model"
-    if [ -f "$SRC" ]; then
-        mkdir -p "models/cpsam_v2_fold${FOLD}"
-        cp "$SRC" "$DST"
-        echo "  Copied fold${FOLD}: $(du -h "$DST" | cut -f1)"
-    else
-        echo "  WARNING: $SRC not found"
-    fi
-done
+echo "===== 3. 上传模型权重 ====="
+cd "$MODEL_DIR"
 
-# CNN 分类器
-CLS_SRC="${MODEL_DIR}/classifier/cnn_classifier_fold0.pth"
-if [ -f "$CLS_SRC" ]; then
-    cp "$CLS_SRC" "models/classifier/"
-    echo "  Copied classifier: $(du -h "$CLS_SRC" | cut -f1)"
-fi
+# 上传全部模型到 HF
+hf upload "$HF_REPO" . . \
+    --include "cpsam_v2_fold*/best_model" \
+    --include "classifier/*.pth" \
+    --message "Upload 5-fold CPSAM models + CNN classifier"
 
-echo "===== 4. Git LFS 追踪 + 提交 ====="
-git lfs track "models/**"
-git add .gitattributes models/
-git commit -m "Add model weights via Git LFS
-
-- 5x CPSAM fine-tuned segmentation models (fold 0-4)
-- 1x ResNet18 CNN classifier (proximal/distal)
-- 5-fold CV IoU: 0.844, AP@0.5: 0.845"
-git push origin main
-
+echo ""
 echo "===== 完成！ ====="
-echo "模型已上传到: https://github.com/MEIPork1/kidney_tubule_seg"
+echo "模型地址: https://huggingface.co/${HF_REPO}"
+echo ""
+echo "他人下载方式:"
+echo "  hf download ${HF_REPO} --local-dir models/"

@@ -30,7 +30,19 @@ GPU 推理推荐 NVIDIA GPU (≥8GB VRAM)，CPU 也可运行但较慢。
 
 ## 模型权重
 
-模型权重通过 Git LFS 管理，或从 [Releases](../../releases) 下载。
+从 Hugging Face 下载：[MEIPork/kidney-tubule-cpsam](https://huggingface.co/MEIPork/kidney-tubule-cpsam)
+
+```bash
+# 安装 huggingface_hub
+pip install huggingface_hub
+
+# 下载全部模型
+hf download MEIPork/kidney-tubule-cpsam --local-dir models/
+```
+
+或直接浏览器下载单个文件：https://huggingface.co/MEIPork/kidney-tubule-cpsam
+
+模型文件：
 
 ```
 models/
